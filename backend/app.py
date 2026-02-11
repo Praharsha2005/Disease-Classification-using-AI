@@ -19,25 +19,32 @@ from utils.pdf_report import generate_pdf_bytes
 
 app = Flask(__name__)
 
-# ✅ FIXED CORS (IMPORTANT FOR RENDER + REACT FRONTEND)
+# ✅ CORS
 CORS(app, resources={r"/*": {"origins": "*"}})
 
 MAX_FILE_SIZE_MB = 10
 app.config["MAX_CONTENT_LENGTH"] = MAX_FILE_SIZE_MB * 1024 * 1024
-
 CONFIDENCE_THRESHOLD = 60.0
 
-# ✅ BASE DIRECTORY (IMPORTANT FOR DEPLOYMENT)
+# ✅ Tensorflow memory optimization
+tf.config.threading.set_intra_op_parallelism_threads(1)
+tf.config.threading.set_inter_op_parallelism_threads(1)
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 MODEL_PATH = os.path.join(BASE_DIR, "model", "chest_xray_vgg16_final_model.keras")
 CLASS_PATH = os.path.join(BASE_DIR, "model", "class_names.json")
 
-# ✅ Load model once
+# ✅ Load model once (GLOBAL)
 model = tf.keras.models.load_model(MODEL_PATH, compile=False)
 
 with open(CLASS_PATH, "r") as f:
     class_names = json.load(f)
+
+
+@app.route("/", methods=["GET"])
+def home():
+    return jsonify({"message": "Backend is running successfully 🚀"}), 200
 
 
 @app.errorhandler(413)
@@ -64,96 +71,90 @@ def validate_patient_details(form):
     }, None, None
 
 
-# ✅ Added OPTIONS method for React CORS Preflight
-@app.route("/predict", methods=["POST", "OPTIONS"])
+@app.route("/predict", methods=["POST"])
 def predict():
+    try:
+        if "image" not in request.files:
+            return jsonify({"error": "Please upload an image file."}), 200
 
-    if request.method == "OPTIONS":
-        return jsonify({"message": "CORS preflight OK"}), 200
+        file = request.files["image"]
 
-    if "image" not in request.files:
-        return jsonify({"error": "Please upload an image file."}), 200
+        # ✅ Validate patient details
+        patient_data, err_resp, err_code = validate_patient_details(request.form)
+        if err_resp:
+            return err_resp, err_code
 
-    file = request.files["image"]
+        # ✅ Validate file type
+        if not file.mimetype or not file.mimetype.startswith("image/"):
+            return jsonify({"error": "Please upload a valid image format."}), 200
 
-    # ✅ Validate patient details
-    patient_data, err_resp, err_code = validate_patient_details(request.form)
-    if err_resp:
-        return err_resp, err_code
+        image_bytes = file.read()
 
-    # ✅ Validate file type
-    if not file.mimetype or not file.mimetype.startswith("image/"):
-        return jsonify({"error": "Please upload a valid image format."}), 200
+        # ✅ Validate file size
+        if len(image_bytes) > MAX_FILE_SIZE_MB * 1024 * 1024:
+            return jsonify({
+                "error": f"File size too large. Upload below {MAX_FILE_SIZE_MB}MB."
+            }), 200
 
-    image_bytes = file.read()
+        # ✅ Preprocess image
+        img_array, original_img = preprocess_image_from_bytes(image_bytes)
 
-    # ✅ Validate file size
-    if len(image_bytes) > MAX_FILE_SIZE_MB * 1024 * 1024:
-        return jsonify({
-            "error": f"File size too large. Upload below {MAX_FILE_SIZE_MB}MB."
-        }), 200
+        if img_array is None or original_img is None:
+            return jsonify({"error": "Please upload a valid image format."}), 200
 
-    # ✅ Preprocess image
-    img_array, original_img = preprocess_image_from_bytes(image_bytes)
+        # ✅ Validate Chest X-ray
+        if not is_chest_xray(img_array):
+            return jsonify({"error": "Please upload a valid Chest X-ray image."}), 200
 
-    if img_array is None or original_img is None:
-        return jsonify({"error": "Please upload a valid image format."}), 200
+        # ✅ Predict
+        preds = model.predict(img_array, verbose=0)
+        class_idx = int(np.argmax(preds))
+        confidence = float(np.max(preds)) * 100
 
-    # ✅ Validate Chest X-ray
-    if not is_chest_xray(img_array):
-        return jsonify({"error": "Please upload a valid Chest X-ray image."}), 200
+        disease = normalize_disease_name(class_names[class_idx])
 
-    # ✅ Predict
-    preds = model.predict(img_array, verbose=0)
-    class_idx = int(np.argmax(preds))
-    confidence = float(np.max(preds)) * 100
+        # ✅ Encode input image
+        _, buffer = cv2.imencode(".png", original_img)
+        input_image_base64 = base64.b64encode(buffer).decode("utf-8")
 
-    disease = normalize_disease_name(class_names[class_idx])
+        response = {
+            **patient_data,
+            "disease": disease,
+            "confidence": round(confidence, 2),
+            "input_image": input_image_base64
+        }
 
-    # ✅ Encode input image
-    _, buffer = cv2.imencode(".png", original_img)
-    input_image_base64 = base64.b64encode(buffer).decode("utf-8")
+        # ✅ Confidence warning
+        if confidence < CONFIDENCE_THRESHOLD:
+            response["confidence_warning"] = (
+                "Prediction confidence is low. Please consult a doctor for confirmation."
+            )
 
-    response = {
-        **patient_data,
-        "disease": disease,
-        "confidence": round(confidence, 2),
-        "input_image": input_image_base64
-    }
+        # ✅ Grad-CAM only if disease is not NORMAL
+        if disease != "NORMAL":
+            gradcam_base64 = generate_gradcam_base64(
+                model, img_array, original_img, class_idx
+            )
+            response["gradcam_image"] = gradcam_base64
 
-    # ✅ Confidence warning
-    if confidence < CONFIDENCE_THRESHOLD:
-        response["confidence_warning"] = (
-            "Prediction confidence is low. Please consult a doctor for confirmation."
-        )
+        # ✅ AI response
+        response["ai_response"] = generate_ai_response(disease)
 
-    # ✅ Grad-CAM only if disease is not NORMAL
-    if disease != "NORMAL":
-        gradcam_base64 = generate_gradcam_base64(
-            model, img_array, original_img, class_idx
-        )
-        response["gradcam_image"] = gradcam_base64
+        # ✅ Date & Time
+        now = datetime.now()
+        response["date_str"] = now.strftime("%d-%m-%Y")
+        response["time_str"] = now.strftime("%I:%M %p")
 
-    # ✅ AI response
-    response["ai_response"] = generate_ai_response(disease)
+        response["pdf_available"] = True
 
-    # ✅ Date & Time
-    now = datetime.now()
-    response["date_str"] = now.strftime("%d-%m-%Y")
-    response["time_str"] = now.strftime("%I:%M %p")
+        return jsonify(response), 200
 
-    response["pdf_available"] = True
-
-    return jsonify(response), 200
+    except Exception as e:
+        return jsonify({"error": f"Server crashed: {str(e)}"}), 500
 
 
-# ✅ Added OPTIONS method for React CORS Preflight
-@app.route("/download_report", methods=["POST", "OPTIONS"])
+@app.route("/download_report", methods=["POST"])
 def download_report():
-
-    if request.method == "OPTIONS":
-        return jsonify({"message": "CORS preflight OK"}), 200
-
     try:
         data = request.json
 
@@ -177,13 +178,6 @@ def download_report():
         return jsonify({"error": str(e)}), 500
 
 
-# ✅ Root endpoint (Optional but useful to verify backend running)
-@app.route("/", methods=["GET"])
-def home():
-    return jsonify({"message": "Backend is running successfully 🚀"}), 200
-
-
-# ✅ IMPORTANT FOR DEPLOYMENT
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
