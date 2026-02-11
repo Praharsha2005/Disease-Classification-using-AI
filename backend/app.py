@@ -1,9 +1,19 @@
 from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 import os
+
+# ✅ MUST be set BEFORE importing tensorflow
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["TF_NUM_INTRAOP_THREADS"] = "1"
+os.environ["TF_NUM_INTEROP_THREADS"] = "1"
 
 import tensorflow as tf
+
+# ✅ MUST be immediately after tensorflow import
+tf.config.threading.set_intra_op_parallelism_threads(1)
+tf.config.threading.set_inter_op_parallelism_threads(1)
+
 import numpy as np
 import json
 import base64
@@ -19,23 +29,21 @@ from utils.pdf_report import generate_pdf_bytes
 
 app = Flask(__name__)
 
-# ✅ CORS
+# ✅ CORS FIXED
 CORS(app, resources={r"/*": {"origins": "*"}})
 
 MAX_FILE_SIZE_MB = 10
 app.config["MAX_CONTENT_LENGTH"] = MAX_FILE_SIZE_MB * 1024 * 1024
+
 CONFIDENCE_THRESHOLD = 60.0
 
-# ✅ Tensorflow memory optimization
-tf.config.threading.set_intra_op_parallelism_threads(1)
-tf.config.threading.set_inter_op_parallelism_threads(1)
-
+# ✅ BASE DIRECTORY
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 MODEL_PATH = os.path.join(BASE_DIR, "model", "chest_xray_vgg16_final_model.keras")
 CLASS_PATH = os.path.join(BASE_DIR, "model", "class_names.json")
 
-# ✅ Load model once (GLOBAL)
+# ✅ Load model once globally
 model = tf.keras.models.load_model(MODEL_PATH, compile=False)
 
 with open(CLASS_PATH, "r") as f:
