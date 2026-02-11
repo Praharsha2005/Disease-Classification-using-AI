@@ -18,7 +18,9 @@ from utils.xray_validator import is_chest_xray
 from utils.pdf_report import generate_pdf_bytes
 
 app = Flask(__name__)
-CORS(app)
+
+# ✅ FIXED CORS (IMPORTANT FOR RENDER + REACT FRONTEND)
+CORS(app, resources={r"/*": {"origins": "*"}})
 
 MAX_FILE_SIZE_MB = 10
 app.config["MAX_CONTENT_LENGTH"] = MAX_FILE_SIZE_MB * 1024 * 1024
@@ -62,8 +64,12 @@ def validate_patient_details(form):
     }, None, None
 
 
-@app.route("/predict", methods=["POST"])
+# ✅ Added OPTIONS method for React CORS Preflight
+@app.route("/predict", methods=["POST", "OPTIONS"])
 def predict():
+
+    if request.method == "OPTIONS":
+        return jsonify({"message": "CORS preflight OK"}), 200
 
     if "image" not in request.files:
         return jsonify({"error": "Please upload an image file."}), 200
@@ -141,8 +147,13 @@ def predict():
     return jsonify(response), 200
 
 
-@app.route("/download_report", methods=["POST"])
+# ✅ Added OPTIONS method for React CORS Preflight
+@app.route("/download_report", methods=["POST", "OPTIONS"])
 def download_report():
+
+    if request.method == "OPTIONS":
+        return jsonify({"message": "CORS preflight OK"}), 200
+
     try:
         data = request.json
 
@@ -164,6 +175,12 @@ def download_report():
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+# ✅ Root endpoint (Optional but useful to verify backend running)
+@app.route("/", methods=["GET"])
+def home():
+    return jsonify({"message": "Backend is running successfully 🚀"}), 200
 
 
 # ✅ IMPORTANT FOR DEPLOYMENT
