@@ -5,7 +5,10 @@ import "./UploadForm.css";
 
 // ✅ Backend URL from .env
 const BACKEND_URL =
-  process.env.REACT_APP_BACKEND_URL || "http://127.0.0.1:5000";
+  (process.env.REACT_APP_BACKEND_URL || "http://127.0.0.1:5000").replace(
+    /\/$/,
+    ""
+  );
 
 const UploadForm = () => {
   const [file, setFile] = useState(null);
@@ -162,7 +165,10 @@ const UploadForm = () => {
       const response = await axios.post(
         `${BACKEND_URL}/download_report`,
         payload,
-        { responseType: "blob" }
+        {
+          responseType: "blob",
+          timeout: 120000,
+        }
       );
 
       const blob = new Blob([response.data], { type: "application/pdf" });
@@ -263,7 +269,6 @@ const UploadForm = () => {
 
     const formData = new FormData();
     formData.append("image", file);
-
     formData.append("patient_name", patientName);
     formData.append("patient_age", patientAge);
     formData.append("patient_gender", patientGender);
@@ -273,7 +278,12 @@ const UploadForm = () => {
       setLoading(true);
       setToast("Prediction started... ⏳");
 
-      const response = await axios.post(`${BACKEND_URL}/predict`, formData);
+      const response = await axios.post(`${BACKEND_URL}/predict`, formData, {
+        headers: {
+          "Content-Type": "multipart/form-data",
+        },
+        timeout: 120000,
+      });
 
       if (response.data.error) {
         setError(response.data.error);
@@ -298,7 +308,8 @@ const UploadForm = () => {
       };
 
       setHistory((prev) => [newRecord, ...prev].slice(0, 1000));
-    } catch {
+    } catch (err) {
+      console.error("Prediction Error:", err);
       setError("Backend not running or error occurred");
       setToast("Backend not running or error occurred ❌");
     } finally {
@@ -351,7 +362,10 @@ const UploadForm = () => {
         );
       }
 
-      if (upperLine.includes("PREVENTION MEASURES") || upperLine.includes("PREVENTIONS")) {
+      if (
+        upperLine.includes("PREVENTION MEASURES") ||
+        upperLine.includes("PREVENTIONS")
+      ) {
         return (
           <h4 key={idx} className="ai-heading">
             PREVENTIONS
@@ -425,7 +439,6 @@ const UploadForm = () => {
               onChange={(e) => setPatientName(e.target.value)}
             />
 
-            {/* ✅ Age max 3 digits */}
             <input
               type="text"
               placeholder="Age"
