@@ -326,77 +326,67 @@ const UploadForm = () => {
     file,
   ]);
 
-  // ✅ FIXED AI RESPONSE HEADINGS (No SECTION 1,2,3,4)
-  const aiResponseContent = useMemo(() => {
-    if (!result?.ai_response) return null;
+const aiResponseContent = useMemo(() => {
+  if (!result?.ai_response) return null;
 
-    const lines = result.ai_response
-      .split("\n")
-      .map((l) => l.trim())
-      .filter((l) => l !== "");
+  const lines = result.ai_response
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => l !== "");
 
-    return lines.map((line, idx) => {
-      const upperLine = line.toUpperCase();
+  return lines.map((line, idx) => {
+    let cleanLine = line;
 
-      if (upperLine.includes("SUMMARY")) {
-        return (
-          <h4 key={idx} className="ai-heading">
-            SUMMARY
-          </h4>
-        );
-      }
+    // 🔥 Remove "SECTION X:" prefix if present
+    if (/^SECTION\s*\d+:/i.test(cleanLine)) {
+      cleanLine = cleanLine.replace(/^SECTION\s*\d+:\s*/i, "");
+    }
 
-      if (upperLine.includes("COMMON SYMPTOMS")) {
-        return (
-          <h4 key={idx} className="ai-heading">
-            COMMON SYMPTOMS
-          </h4>
-        );
-      }
+    const upperLine = cleanLine.toUpperCase();
 
-      if (upperLine.includes("PRECAUTIONS")) {
-        return (
-          <h4 key={idx} className="ai-heading">
-            PRECAUTIONS
-          </h4>
-        );
-      }
-
-      if (
-        upperLine.includes("PREVENTION MEASURES") ||
-        upperLine.includes("PREVENTIONS")
-      ) {
-        return (
-          <h4 key={idx} className="ai-heading">
-            PREVENTIONS
-          </h4>
-        );
-      }
-
-      if (line.toLowerCase().startsWith("precautions for")) {
-        return (
-          <h4 key={idx} className="ai-heading">
-            {line.replace("Precautions for", "").trim().toUpperCase()}
-          </h4>
-        );
-      }
-
-      if (line.startsWith("-") || line.startsWith("*")) {
-        return (
-          <li key={idx} className="ai-bullet">
-            {line.replace("-", "").replace("*", "").trim()}
-          </li>
-        );
-      }
-
+    // ✅ NORMAL case
+    if (cleanLine.toLowerCase().startsWith("precautions for")) {
       return (
-        <p key={idx} className="ai-paragraph">
-          {line}
-        </p>
+        <h4 key={idx} className="ai-heading">
+          {cleanLine.toUpperCase()}
+        </h4>
       );
-    });
-  }, [result]);
+    }
 
+    // ✅ Exact Headings Only (no duplicates)
+    if (upperLine === "SUMMARY") {
+      return <h4 key={idx} className="ai-heading">SUMMARY</h4>;
+    }
+
+    if (upperLine === "COMMON SYMPTOMS") {
+      return <h4 key={idx} className="ai-heading">COMMON SYMPTOMS</h4>;
+    }
+
+    if (upperLine === "PRECAUTIONS") {
+      return <h4 key={idx} className="ai-heading">PRECAUTIONS</h4>;
+    }
+
+    if (upperLine === "PREVENTION MEASURES") {
+      return <h4 key={idx} className="ai-heading">PREVENTION MEASURES</h4>;
+    }
+
+    // ✅ Bullet points
+    if (cleanLine.startsWith("-") || cleanLine.startsWith("*")) {
+      return (
+        <li key={idx} className="ai-bullet">
+          {cleanLine.replace(/[-*]/, "").trim()}
+        </li>
+      );
+    }
+
+    // ✅ Normal paragraph (this fixes missing SUMMARY content)
+    return (
+      <p key={idx} className="ai-paragraph">
+        {cleanLine}
+      </p>
+    );
+  });
+}, [result]);
   const doctorAdvice = result ? getDoctorRecommendation(result.disease) : null;
 
   return (

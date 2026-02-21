@@ -29,17 +29,17 @@ Start with this exact line:
 
 Then provide precautions in the following STRICT structure.
 
+Heading: Precautions for PNEUMONIA
+Provide 5 bullet points.
+Each bullet must be ONE sentence.
+Each sentence must end with a full stop.
+
 Heading: Precautions for TUBERCULOSIS
 Provide 5 bullet points.
 Each bullet must be ONE sentence.
 Each sentence must end with a full stop.
 
 Heading: Precautions for COVID-19
-Provide 5 bullet points.
-Each bullet must be ONE sentence.
-Each sentence must end with a full stop.
-
-Heading: Precautions for PNEUMONIA
 Provide 5 bullet points.
 Each bullet must be ONE sentence.
 Each sentence must end with a full stop.

@@ -17,3 +17,5 @@ frontend/build/
 
 # System files
 .DS_Store
+
+chestxray-backend/
